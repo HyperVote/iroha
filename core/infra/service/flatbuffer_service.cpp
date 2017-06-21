@@ -292,6 +292,20 @@ namespace flatbuffer_service {
         res += "    ]\n";
         return res;
       };
+    any_asset_to_strings[iroha::AnyAsset::EncryptedVote] =
+      [&](const void* asset) -> std::string {
+        const iroha::EncryptedVote* ast = static_cast<const iroha::EncryptedVote*>(asset);
+
+        std::string res = " EncryptedVote[\n";
+        res += "        sessionName:" + ast->session_name()->str() + ",\n";
+        res += "        domain_name:" + ast->domain_name()->str() + ",\n";
+        res += "        ledger_name:" + ast->ledger_name()->str() + ",\n";
+        res += "        description:" + ast->description()->str() + "\n";
+        res += "        x:" + ast->x()->str() + "\n";
+        res += "        y:" + ast->y()->str() + "\n";
+        res += "    ]\n";
+        return res;
+      };
 
     command_to_strings[iroha::Command::AssetCreate] =
       [&](const void* command) -> std::string {
@@ -863,6 +877,22 @@ namespace flatbuffer_service {
                                                   ledgerName.c_str(), description.c_str(),
                                                   amount.c_str(), precision);
       auto asset = iroha::CreateAsset(fbb, ::iroha::AnyAsset::Currency, currency.Union());
+      fbb.Finish(asset);
+      auto buf = fbb.GetBufferPointer();
+      return {buf, buf + fbb.GetSize()};
+    }
+    
+    // Note: This function is used mainly for debug because Sumeragi doesn't create EncryptedVote.
+    std::vector<uint8_t> CreateEncryptedVote(
+      const std::string& sessionName, const std::string& domainName,
+      const std::string& ledgerName, const std::string& description,
+      const std::string& x, const std::string& y
+    ) {
+      flatbuffers::FlatBufferBuilder fbb;
+      auto vote = iroha::CreateEncryptedVoteDirect(fbb, sessionName.c_str(), domainName.c_str(),
+                                                  ledgerName.c_str(), description.c_str(),
+                                                  x.c_str(), y.c_str());
+      auto asset = iroha::CreateAsset(fbb, ::iroha::AnyAsset::EncryptedVote, vote.Union());
       fbb.Finish(asset);
       auto buf = fbb.GetBufferPointer();
       return {buf, buf + fbb.GetSize()};

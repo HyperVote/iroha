@@ -579,6 +579,18 @@ namespace connection {
                       asset->asset_as_Currency()->amount()->c_str(),
                       asset->asset_as_Currency()->precision())
                       .Union()));
+            } else if (asset->asset_type() == ::iroha::AnyAsset::EncryptedVote) {
+              res_assets.push_back(::iroha::CreateAsset(
+                  fbbResponse, asset->asset_type(),
+                  ::iroha::CreateEncryptedVoteDirect(
+                      fbbResponse,
+                      asset->asset_as_EncryptedVote()->session_name()->c_str(),
+                      asset->asset_as_EncryptedVote()->domain_name()->c_str(),
+                      asset->asset_as_EncryptedVote()->ledger_name()->c_str(),
+                      asset->asset_as_EncryptedVote()->description()->c_str(),
+                      asset->asset_as_EncryptedVote()->y()->c_str(),
+                      asset->asset_as_EncryptedVote()->y()->c_str())
+                      .Union()));
             }
           }
         }

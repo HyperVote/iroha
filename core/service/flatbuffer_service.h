@@ -149,7 +149,14 @@ namespace flatbuffer_service {
                                         const std::string &description,
                                         const std::string &amount,
                                         uint8_t precision);
-
+    // Note: This function is used mainly for debug because Sumeragi doesn't create
+    // EncryptedVote.
+    std::vector<uint8_t> CreateEncryptedVote(const std::string& sessionName,
+                                             const std::string& domainName,
+                                             const std::string& ledgerName,
+                                             const std::string& description,
+                                             const std::string& x,
+                                             const std::string& y);
   }  // namespace asset
 
 

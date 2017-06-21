@@ -76,6 +76,13 @@ namespace runtime {
                         asset->asset_as_Currency()->currency_name()
                     );
                 }
+                case iroha::AnyAsset::EncryptedVote:{
+                    return std::make_tuple(
+                        asset->asset_as_EncryptedVote()->ledger_name(),
+                        asset->asset_as_EncryptedVote()->domain_name(),
+                        asset->asset_as_EncryptedVote()->session_name()
+                    );
+                }
                 case iroha::AnyAsset::NONE: throw; // ToDo
             }
         };

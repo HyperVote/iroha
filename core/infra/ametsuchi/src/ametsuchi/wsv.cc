@@ -21,6 +21,30 @@
 #include <transaction_generated.h>
 #include <iostream>
 
+
+#include <integer.h>
+using BigInteger = CryptoPP::Integer;
+
+using std::cout;
+using std::cerr;
+using std::endl;
+
+#include <osrng.h>
+using CryptoPP::AutoSeededRandomPool;
+
+#include <secblock.h>
+using CryptoPP::SecByteBlock;
+
+#include <elgamal.h>
+using CryptoPP::ElGamal;
+using CryptoPP::ElGamalKeys;
+
+#include <cryptlib.h>
+using CryptoPP::DecodingResult;
+using CryptoPP::PublicKey;
+using CryptoPP::PrivateKey;
+
+
 namespace ametsuchi {
 __int128_t parse(const flatbuffers::String *str) {
   __int128_t res = 0;
@@ -207,35 +231,44 @@ void WSV::close_cursors() {
 // WSV commands:
 //  Use for operate Asset.
 void WSV::add(const iroha::Add *command) {
-  // Now only Currency is supported
+  if (command->asset_nested_root()->asset_type() == iroha::AnyAsset::EncryptedVote) {
+    account_add_encryptedvote(command->accPubKey(), command->asset());
+  } else
   if (command->asset_nested_root()->asset_type() != iroha::AnyAsset::Currency) {
     // TODO: How to check the asset_type?
     printf("This asset is not an currency \n");
     throw exception::InternalError::NOT_IMPLEMENTED;
+  } else {
+    account_add_currency(command->accPubKey(), command->asset());
   }
-
-  account_add_currency(command->accPubKey(), command->asset());
 }
 
 void WSV::subtract(const iroha::Subtract *command) {
-  // Now only currency is supported
+  if (command->asset_nested_root()->asset_type() == iroha::AnyAsset::EncryptedVote) {
+    this->account_subtract_encryptedvote(command->accPubKey(), command->asset());
+  } else
   if (command->asset_nested_root()->asset_type() != iroha::AnyAsset::Currency)
     throw exception::InternalError::NOT_IMPLEMENTED;
-
-  // TODO: it may write exeption when can't transfer becouse of sender has not
-  // asset.
-  this->account_subtract_currency(command->accPubKey(), command->asset());
+  else {
+    // TODO: it may write exeption when can't transfer becouse of sender has not
+    // asset.
+    this->account_subtract_currency(command->accPubKey(), command->asset());
+  }
 }
 
 void WSV::transfer(const iroha::Transfer *command) {
-  // Now only currency is supported
+  if (command->asset_nested_root()->asset_type() == iroha::AnyAsset::EncryptedVote) {
+    this->account_subtract_encryptedvote(command->sender(), command->asset());
+    this->account_add_encryptedvote(command->receiver(), command->asset());
+  } else
   if (command->asset_nested_root()->asset_type() != iroha::AnyAsset::Currency)
     throw exception::InternalError::NOT_IMPLEMENTED;
-
-  // TODO: it may write exeption when can't transfer becouse of sender has not
-  // asset.
-  this->account_subtract_currency(command->sender(), command->asset());
-  this->account_add_currency(command->receiver(), command->asset());
+  else {
+    // TODO: it may write exeption when can't transfer becouse of sender has not
+    // asset.
+    this->account_subtract_currency(command->sender(), command->asset());
+    this->account_add_currency(command->receiver(), command->asset());
+  }
 }
 
 
@@ -451,6 +484,147 @@ void WSV::account_subtract_currency(
     }
   }
 }
+
+
+
+void WSV::account_add_encryptedvote(const flatbuffers::String *acc_pub_key,
+                               const flatbuffers::Vector<uint8_t> *asset_fb) {
+  int res;
+  MDB_val c_key, c_val;
+  c_key.mv_data = (void *)acc_pub_key->data();
+  c_key.mv_size = acc_pub_key->size();
+  c_val.mv_data = (void *)asset_fb->Data();
+  c_val.mv_size = asset_fb->size();
+
+  auto cursor = trees_.at("wsv_pubkey_assets").second;
+  std::vector<uint8_t> copy;
+  const iroha::EncryptedVote *vote =
+      flatbuffers::GetRoot<iroha::Asset>(asset_fb->Data())->asset_as_EncryptedVote();
+
+  try {
+    // may throw ASSET_NOT_FOUND
+    auto account_asset = accountGetAsset(acc_pub_key, vote->ledger_name(),
+                                           vote->domain_name(),
+                                           vote->session_name(), true);
+    auto account_vote = account_asset->asset_as_EncryptedVote();
+
+    // compute product of X and Y
+    BigInteger xTx ( vote->x()->c_str() );
+    BigInteger yTx ( vote->y()->c_str() );
+    BigInteger xAcc ( account_vote->x()->c_str() ); // default to 1 if x is 0
+    BigInteger yAcc ( account_vote->y()->c_str() ); // default to 1 if y is 0
+
+    cout << "xTx=" << IntToString(xTx) << " yTx=" << IntToString(yTx) << std::endl;
+    cout << "xAcc=" << IntToString(xAcc) << " yAcc=" << IntToString(yAcc) << std::endl;
+
+    flatbuffers::FlatBufferBuilder fbb;
+    auto copy_asset =
+        iroha::CreateAsset(fbb, iroha::AnyAsset::EncryptedVote,
+                           iroha::CreateEncryptedVote(fbb, fbb.CreateSharedString(account_vote->session_name()),
+                                                 fbb.CreateSharedString(account_vote->domain_name()),
+                                                 fbb.CreateSharedString(account_vote->ledger_name()),
+                                                 fbb.CreateSharedString(account_vote->description()),
+                                                 fbb.CreateSharedString( IntToString(xTx*xAcc) ),
+                                                 fbb.CreateSharedString( IntToString(yTx*yAcc) )).Union()
+        );
+    fbb.Finish(copy_asset);
+    copy = {fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize()};
+
+    // cursor is at the correct asset, just replace with a copy of FB and flag
+    // MDB_CURRENT
+    if ((res = mdb_cursor_get(cursor, &c_key, &c_val, MDB_GET_BOTH ))) {
+      AMETSUCHI_CRITICAL(res, EINVAL);
+    }
+    MDB_val p_val;
+    p_val.mv_data = copy.data();
+    p_val.mv_size = copy.size();
+    if ((res = mdb_cursor_put(cursor, &c_key, &p_val, MDB_CURRENT))) {
+      AMETSUCHI_CRITICAL(res, MDB_KEYEXIST);
+      AMETSUCHI_CRITICAL(res, MDB_MAP_FULL);
+      AMETSUCHI_CRITICAL(res, MDB_TXN_FULL);
+      AMETSUCHI_CRITICAL(res, EACCES);
+      AMETSUCHI_CRITICAL(res, EINVAL);
+    }
+  } catch (exception::InvalidTransaction e) {
+    // Create new Asset
+    if (e == exception::InvalidTransaction::ASSET_NOT_FOUND) {
+      // write to tree
+
+      if ((res = mdb_cursor_put(cursor, &c_key, &c_val, 0))) {
+        AMETSUCHI_CRITICAL(res, MDB_MAP_FULL);
+        AMETSUCHI_CRITICAL(res, MDB_TXN_FULL);
+        AMETSUCHI_CRITICAL(res, EACCES);
+        AMETSUCHI_CRITICAL(res, EINVAL);
+      }
+    } else {
+      throw;
+    }
+  }
+}
+
+void WSV::account_subtract_encryptedvote(
+    const flatbuffers::String *acc_pub_key,
+    const flatbuffers::Vector<uint8_t> *asset_fb) {
+  int res;
+  MDB_val c_key, c_val;
+  c_key.mv_data = (void *)acc_pub_key->data();
+  c_key.mv_size = acc_pub_key->size();
+  c_val.mv_data = (void *)asset_fb->Data();
+  c_val.mv_size = asset_fb->size();
+
+  auto cursor = trees_.at("wsv_pubkey_assets").second;
+  std::vector<uint8_t> copy;
+  const iroha::EncryptedVote *vote =
+      flatbuffers::GetRoot<iroha::Asset>(asset_fb->Data())->asset_as_EncryptedVote();
+
+  try {
+    // may throw ASSET_NOT_FOUND
+    auto account_asset = accountGetAsset(acc_pub_key, vote->ledger_name(),
+                                           vote->domain_name(),
+                                           vote->session_name(), true);
+    auto account_vote = account_asset->asset_as_EncryptedVote();
+
+    // need to set x and y to 0 ?
+    
+    flatbuffers::FlatBufferBuilder fbb;
+    auto copy_asset =
+        iroha::CreateAsset(fbb, iroha::AnyAsset::EncryptedVote,
+                           iroha::CreateEncryptedVote(fbb, fbb.CreateSharedString(account_vote->session_name()),
+                                                 fbb.CreateSharedString(account_vote->domain_name()),
+                                                 fbb.CreateSharedString(account_vote->ledger_name()),
+                                                 fbb.CreateSharedString(account_vote->description()),
+                                                 fbb.CreateSharedString( "0" ),
+                                                 fbb.CreateSharedString( "0" )).Union()
+        );
+    fbb.Finish(copy_asset);
+    copy = {fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize()};
+
+    // cursor is at the correct asset, just replace with a copy of FB and flag
+    // MDB_CURRENT
+    if ((res = mdb_cursor_get(cursor, &c_key, &c_val, MDB_GET_BOTH ))) {
+      AMETSUCHI_CRITICAL(res, EINVAL);
+    }
+    MDB_val p_val;
+    p_val.mv_data = copy.data();
+    p_val.mv_size = copy.size();
+    if ((res = mdb_cursor_put(cursor, &c_key, &p_val, MDB_CURRENT))) {
+      AMETSUCHI_CRITICAL(res, MDB_KEYEXIST);
+      AMETSUCHI_CRITICAL(res, MDB_MAP_FULL);
+      AMETSUCHI_CRITICAL(res, MDB_TXN_FULL);
+      AMETSUCHI_CRITICAL(res, EACCES);
+      AMETSUCHI_CRITICAL(res, EINVAL);
+    }
+  } catch (exception::InvalidTransaction e) {
+    // Create new Asset
+    if (e == exception::InvalidTransaction::ASSET_NOT_FOUND) {
+      // Asset Not Found Error ( can't subtract )
+      throw;
+    } else {
+      throw;
+    }
+  }
+}
+
 
 void WSV::account_add(const iroha::AccountAdd *command) {
   MDB_val c_key, c_val;

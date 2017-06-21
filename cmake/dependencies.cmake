@@ -408,3 +408,38 @@ set_target_properties(LMDB PROPERTIES
 if(NOT LMDB_FOUND)
   add_dependencies(LMDB lmdb_LMDB)
 endif()
+
+
+
+
+
+###########################
+#       CryptoPP          #
+###########################
+find_package(CryptoPP)
+
+if(NOT CRYPTOPP_FOUND)
+  ExternalProject_Add(cryptopp
+    GIT_REPOSITORY    "https://github.com/weidai11/cryptopp.git"
+    CMAKE_ARGS        -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
+                      -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
+                      -DBENCHMARK_ENABLE_TESTING=OFF
+                      -DBUILD_TESTING=OFF
+                      -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+    INSTALL_COMMAND   "" # remove install step
+    UPDATE_COMMAND    "" # remove update step
+    TEST_COMMAND      "" # remove test step
+    )
+  ExternalProject_Get_Property(cryptopp source_dir binary_dir)
+  set(cryptopp_SOURCE_DIR ${source_dir})
+  set(cryptopp_BINARY_DIR ${binary_dir})
+
+  add_library(CryptoPP SHARED IMPORTED)
+  file(MAKE_DIRECTORY ${source_dir})
+  set_target_properties(CryptoPP PROPERTIES
+    INTERFACE_INCLUDE_DIRECTORIES ${source_dir}
+    IMPORTED_LOCATION ${binary_dir}/libcryptopp.a
+    )
+  
+  add_dependencies(CryptoPP cryptopp)
+endif()

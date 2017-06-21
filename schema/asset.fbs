@@ -36,7 +36,20 @@ table Currency {
 }
 
 
-union AnyAsset {ComplexAsset, Currency}
+// currency is a simple asset, like USD.
+table EncryptedVote {
+  session_name: string  (required, key);
+  domain_name:   string  (required);
+  ledger_name:   string  (required);
+
+  description: string;
+  // (x,y) = (g^r, h^r.G^v), where v {0,1} is the vote {no, yes}
+  x:    string;
+  y:    string;
+}
+
+
+union AnyAsset {ComplexAsset, Currency, EncryptedVote}
 
 table Asset {
   asset: AnyAsset;

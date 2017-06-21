@@ -18,6 +18,10 @@ table Account {
   ledgerPermissions:    [AccountPermissionLedgerWrapper];
   domainPermissions:    [AccountPermissionDomainWrapper];
   assetPermissions:     [AccountPermissionAssetWrapper];
+  
+  p: string;  // big prime number
+  G: string;  // generator number, belongs to (1, p-1)
+  h: string;  // public key for ElGamal scheme
 }
 
 

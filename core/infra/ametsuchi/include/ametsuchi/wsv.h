@@ -130,6 +130,12 @@ class WSV {
                             const flatbuffers::Vector<uint8_t> *asset_fb);
   void account_subtract_currency(const flatbuffers::String *acc_pub_key,
                                  const flatbuffers::Vector<uint8_t> *asset_fb);
+  
+  // voting
+  void account_add_encryptedvote(const flatbuffers::String *acc_pub_key,
+                            const flatbuffers::Vector<uint8_t> *asset_fb);
+  void account_subtract_encryptedvote(const flatbuffers::String *acc_pub_key,
+                                 const flatbuffers::Vector<uint8_t> *asset_fb);
 };
 }
 

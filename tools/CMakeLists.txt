@@ -3,6 +3,18 @@ SET(EXECUTABLE_OUTPUT_PATH ${PROJECT_BINARY_DIR}/bin)
 
 
 ###########################
+#      Hypervote test     #
+###########################
+
+add_executable(hypervote_setup
+    hypervote_setup.cpp
+)
+
+target_link_libraries(hypervote_setup
+    connection_with_grpc_flatbuffer
+)
+
+###########################
 #      Sumeragi test      #
 ###########################
 

@@ -28,19 +28,35 @@ namespace comparator {
 
 // MDB_cmp_func
 int cmp_assets(const MDB_val* a, const MDB_val* b) {
-  auto ac = flatbuffers::GetRoot<iroha::Asset>(a->mv_data)->asset_as_Currency();
-  auto bc = flatbuffers::GetRoot<iroha::Asset>(b->mv_data)->asset_as_Currency();
-
   std::string as;
-  as += ac->ledger_name()->data();
-  as += ac->domain_name()->data();
-  as += ac->currency_name()->data();
-
   std::string bs;
-  bs += bc->ledger_name()->data();
-  bs += bc->domain_name()->data();
-  bs += bc->currency_name()->data();
 
+  if (flatbuffers::GetRoot<iroha::Asset>(a->mv_data)->asset_type() == iroha::AnyAsset::EncryptedVote)
+  {
+    auto ac = flatbuffers::GetRoot<iroha::Asset>(a->mv_data)->asset_as_EncryptedVote();
+    as += ac->ledger_name()->data();
+    as += ac->domain_name()->data();
+    as += ac->session_name()->data();
+  } else {
+    auto ac = flatbuffers::GetRoot<iroha::Asset>(a->mv_data)->asset_as_Currency();
+    as += ac->ledger_name()->data();
+    as += ac->domain_name()->data();
+    as += ac->currency_name()->data();
+  }
+
+  if (flatbuffers::GetRoot<iroha::Asset>(b->mv_data)->asset_type() == iroha::AnyAsset::EncryptedVote)
+  {
+    auto bc = flatbuffers::GetRoot<iroha::Asset>(b->mv_data)->asset_as_EncryptedVote();
+    bs += bc->ledger_name()->data();
+    bs += bc->domain_name()->data();
+    bs += bc->session_name()->data();
+  } else {
+    auto bc = flatbuffers::GetRoot<iroha::Asset>(b->mv_data)->asset_as_Currency();
+    bs += bc->ledger_name()->data();
+    bs += bc->domain_name()->data();
+    bs += bc->currency_name()->data();
+  }
+  
   return as.compare(bs);
 }
 
